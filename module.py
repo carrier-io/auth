@@ -149,7 +149,7 @@ class Module(module.ModuleModel):  # pylint: disable=R0902
             #
             setattr(
                 self, proxy_name,
-                getattr(self.context.rpc_manager.call, rpc_name)
+                functools.partial(self.mocked_call, rpc_name)
             )
         # Register auth tool
         self.descriptor.register_tool("auth", self)
@@ -169,6 +169,20 @@ class Module(module.ModuleModel):  # pylint: disable=R0902
             cache=cachetools.TTLCache(maxsize=1024, ttl=60)
         )(self.get_token)
 
+    def mocked_call(self, rpc_name: str, *args, **kwargs):
+        log.info('rpc_name: [%s] | args: %s | kwargs: %s', rpc_name, args, kwargs)
+        from queue import Empty
+        try:
+            return self.context.rpc_manager.call_function_with_timeout(
+                    rpc_name,
+                    1,
+                    *args,
+                    **kwargs,
+                )
+        except Empty:
+            log.warning('Call mocker RPC [%s]', rpc_name)
+
+
     def deinit(self):  # pylint: disable=R0201
         """ De-init module """
         log.info("De-initializing module")
@@ -184,6 +198,7 @@ class Module(module.ModuleModel):  # pylint: disable=R0902
 
     def ping(self, retry_interval=5, rpc_timeout=1, max_retries=None):
         """ Check if auth pylon is connected """
+        return True
         retries_done = 0
         #
         while True:
@@ -372,8 +387,10 @@ class Module(module.ModuleModel):  # pylint: disable=R0902
     # Tools: current
     #
 
-    def resolve_permissions(self, scope_id=1, auth_data=None):
+    def resolve_permissions(self, scope_id=1, auth_data=None) -> list:
         """ Resolve current permissions """
+        # Public: no permissions
+        return list()
         if auth_data is None:
             auth_data = flask.g.auth
         #
@@ -385,8 +402,12 @@ class Module(module.ModuleModel):  # pylint: disable=R0902
             # Public: no permissions
             return list()
 
-    def current_user(self, auth_data=None):
+    def current_user(self, auth_data=None) -> dict:
         """ Get current user """
+        # Public
+        return {
+            "id": None, "email": "public@platform.user", "name": "Public"
+        }
         if auth_data is None:
             auth_data = flask.g.auth
         #
